@@ -73,30 +73,38 @@ class ByteBufferDataInput(private val buf: ByteBuffer) : DataInput {
                     count++
                     chararr[chararrCount++] = c.toChar()
                 }
+
                 12, 13 -> { /* 110x xxxx   10xx xxxx*/
                     count += 2
                     if (count > chararr.size) throw UTFDataFormatException(
-                            "malformed input: partial character at end")
+                        "malformed input: partial character at end"
+                    )
                     char2 = buf[pos + count - 1].toInt()
                     if (char2 and 0xC0 != 0x80) throw UTFDataFormatException(
-                            "malformed input around byte $count")
+                        "malformed input around byte $count"
+                    )
                     chararr[chararrCount++] = (c and 0x1F shl 6 or
-                            (char2 and 0x3F)).toChar()
+                        (char2 and 0x3F)).toChar()
                 }
+
                 14 -> { /* 1110 xxxx  10xx xxxx  10xx xxxx */
                     count += 3
                     if (count > chararr.size) throw UTFDataFormatException(
-                            "malformed input: partial character at end")
+                        "malformed input: partial character at end"
+                    )
                     char2 = buf[pos + count - 2].toInt()
                     char3 = buf[pos + count - 1].toInt()
                     if (char2 and 0xC0 != 0x80 || char3 and 0xC0 != 0x80) throw UTFDataFormatException(
-                            "malformed input around byte " + (count - 1))
+                        "malformed input around byte " + (count - 1)
+                    )
                     chararr[chararrCount++] = (c and 0x0F shl 12 or
-                            (char2 and 0x3F shl 6) or
-                            (char3 and 0x3F shl 0)).toChar()
+                        (char2 and 0x3F shl 6) or
+                        (char3 and 0x3F shl 0)).toChar()
                 }
+
                 else -> throw UTFDataFormatException(
-                        "malformed input around byte $count")
+                    "malformed input around byte $count"
+                )
             }
         }
         skipBytes(len)

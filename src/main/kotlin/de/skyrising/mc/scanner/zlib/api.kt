@@ -41,10 +41,12 @@ fun decodeGzip(buf: ByteBuffer, arr: ByteArray? = null): ByteBuffer {
         buf.position(buf.position() + buf.short.toInt() and 0xffff)
     }
     if ((flags and GZIP_FLAG_NAME) != 0u) {
-        while (buf.get() != 0u.toByte()) {/**/}
+        while (buf.get() != 0u.toByte()) {/**/
+        }
     }
     if ((flags and GZIP_FLAG_COMMENT) != 0u) {
-        while (buf.get() != 0u.toByte()) {/**/}
+        while (buf.get() != 0u.toByte()) {/**/
+        }
     }
     if ((flags and GZIP_FLAG_HCRC) != 0u) {
         buf.short

@@ -10,13 +10,14 @@ class BitStream(private val buf: ByteBuffer) {
     init {
         buf.order(ByteOrder.LITTLE_ENDIAN)
     }
+
     private var offset = buf.position()
     private var overrun = 0
     private var bitbuf: Long = 0
     private var bitsleft = 0
 
     private fun fillBitsSlow(bytes: Int) {
-        for(i in 0 until bytes) {
+        for (i in 0 until bytes) {
             val off = offset++
             val buf = this.buf
             val bl = bitsleft

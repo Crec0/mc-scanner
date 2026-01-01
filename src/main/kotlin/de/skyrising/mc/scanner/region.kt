@@ -22,6 +22,7 @@ data class RegionFile(private val path: Path) : Scannable {
         else -> dim
     }
     override val size = Files.size(path)
+
     init {
         val fileName = path.fileName.toString()
         val parts = fileName.split('.')
@@ -46,7 +47,16 @@ data class RegionFile(private val path: Path) : Scannable {
         val blockStateNeedles: Set<BlockState> = needles.filterIsInstanceTo(mutableSetOf())
         val itemNeedles: Set<ItemType> = needles.filterIsInstanceTo(mutableSetOf())
         forEachChunk { x, z, version, data ->
-            scanChunk(results, blockIdNeedles, blockStateNeedles, itemNeedles, statsMode, ChunkPos(dimension, (this.x shl 5) or x, (this.z shl 5) or z), version, data)
+            scanChunk(
+                results,
+                blockIdNeedles,
+                blockStateNeedles,
+                itemNeedles,
+                statsMode,
+                ChunkPos(dimension, (this.x shl 5) or x, (this.z shl 5) or z),
+                version,
+                data
+            )
         }
         return results
     }
@@ -78,7 +88,16 @@ fun getBlockStates(section: CompoundTag, version: Int): LongArray? {
     return if (container.has("data", Tag.LONG_ARRAY)) container.getLongArray("data") else null
 }
 
-fun scanChunk(results: MutableList<SearchResult>, blockIdNeedles: Set<BlockIdMask>, blockStateNeedles: Set<BlockState>, itemNeedles: Set<ItemType>, statsMode: Boolean, chunkPos: ChunkPos, version: Int, data: CompoundTag) {
+fun scanChunk(
+    results: MutableList<SearchResult>,
+    blockIdNeedles: Set<BlockIdMask>,
+    blockStateNeedles: Set<BlockState>,
+    itemNeedles: Set<ItemType>,
+    statsMode: Boolean,
+    chunkPos: ChunkPos,
+    version: Int,
+    data: CompoundTag
+) {
     val dimension = chunkPos.dimension
     val flattened = version >= DataVersion.FLATTENING
     if (!flattened && blockIdNeedles.isNotEmpty()) {
@@ -92,11 +111,16 @@ fun scanChunk(results: MutableList<SearchResult>, blockIdNeedles: Set<BlockIdMas
     }
 }
 
-private fun scanUnflattenedChunk(blockIdNeedles: Set<BlockIdMask>, data: CompoundTag, results: MutableList<SearchResult>, chunkPos: ChunkPos) {
+private fun scanUnflattenedChunk(
+    blockIdNeedles: Set<BlockIdMask>,
+    data: CompoundTag,
+    results: MutableList<SearchResult>,
+    chunkPos: ChunkPos
+) {
     val sections = data.getList<CompoundTag>("Sections")
     val matches = Object2IntOpenHashMap<BlockIdMask>()
     for (section in sections) {
-        val y = section.getInt("Y")
+        section.getInt("Y")
         val blocks = section.getByteArray("Blocks")
         //val add = if (section.has("Add", Tag.BYTE_ARRAY)) section.getByteArray("Add") else null
         for (blockNeedle in blockIdNeedles) {
@@ -112,7 +136,13 @@ private fun scanUnflattenedChunk(blockIdNeedles: Set<BlockIdMask>, data: Compoun
     }
 }
 
-private fun scanFlattenedChunk(data: CompoundTag, version: Int, blockStateNeedles: Set<BlockState>, results: MutableList<SearchResult>, chunkPos: ChunkPos) {
+private fun scanFlattenedChunk(
+    data: CompoundTag,
+    version: Int,
+    blockStateNeedles: Set<BlockState>,
+    results: MutableList<SearchResult>,
+    chunkPos: ChunkPos
+) {
     val sections = data.getList<CompoundTag>(if (version < DataVersion.REMOVE_LEVEL_TAG) "Sections" else "sections")
     val matches = Object2IntOpenHashMap<BlockState>()
     for (section in sections) {
@@ -126,7 +156,12 @@ private fun scanFlattenedChunk(data: CompoundTag, version: Int, blockStateNeedle
             }
         }
         if (matchingPaletteEntries.isEmpty()) continue
-        val counts = scanBlockStates(matchingPaletteEntries, blockStates, palette.size, version < DataVersion.NON_PACKED_BLOCK_STATES)
+        val counts = scanBlockStates(
+            matchingPaletteEntries,
+            blockStates,
+            palette.size,
+            version < DataVersion.NON_PACKED_BLOCK_STATES
+        )
         for (e in counts.object2IntEntrySet()) {
             matches[e.key] = matches.getInt(e.key) + e.intValue
         }
@@ -136,7 +171,14 @@ private fun scanFlattenedChunk(data: CompoundTag, version: Int, blockStateNeedle
     }
 }
 
-private fun scanChunkItems(version: Int, data: CompoundTag, itemNeedles: Set<ItemType>, statsMode: Boolean, dimension: String, results: MutableList<SearchResult>) {
+private fun scanChunkItems(
+    version: Int,
+    data: CompoundTag,
+    itemNeedles: Set<ItemType>,
+    statsMode: Boolean,
+    dimension: String,
+    results: MutableList<SearchResult>
+) {
     val blockEntitiesTag = if (version >= DataVersion.REMOVE_LEVEL_TAG) "block_entities" else "TileEntities"
     if (data.has(blockEntitiesTag, Tag.LIST)) {
         for (blockEntity in data.getList<CompoundTag>(blockEntitiesTag)) {
@@ -168,7 +210,12 @@ private fun scanChunkItems(version: Int, data: CompoundTag, itemNeedles: Set<Ite
     }
 }
 
-fun scanBlockStates(ids: Int2ObjectMap<BlockState>, blockStates: LongArray, paletteSize: Int, packed: Boolean): Object2IntMap<BlockState> {
+fun scanBlockStates(
+    ids: Int2ObjectMap<BlockState>,
+    blockStates: LongArray,
+    paletteSize: Int,
+    packed: Boolean
+): Object2IntMap<BlockState> {
     val counts = Object2IntOpenHashMap<BlockState>()
     val bits = maxOf(4, ceil(log2(paletteSize.toDouble())).toInt())
     val mask = (1 shl bits) - 1

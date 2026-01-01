@@ -7,7 +7,7 @@ import java.io.Writer
 import java.util.*
 import kotlin.reflect.KClass
 
-interface TagType<T: Tag> {
+interface TagType<T : Tag> {
     fun read(din: DataInput): T
 }
 
@@ -49,14 +49,14 @@ sealed class Tag {
         private val idToType = Array<TagType<*>>(13) { EndTag }
         private val tagToId = Reference2IntOpenHashMap<Class<*>>(13)
 
-        private fun <T: Tag> register(cls: KClass<T>, id: Int, type: TagType<T>) {
+        private fun <T : Tag> register(cls: KClass<T>, id: Int, type: TagType<T>) {
             idToTag[id] = cls.java
             idToType[id] = type
             tagToId[cls.java] = id
         }
 
         fun getId(tag: Tag) = tagToId.getInt(tag::class.java)
-        fun <T: Tag> getId(type: KClass<T>) = tagToId.getInt(type.java)
+        fun <T : Tag> getId(type: KClass<T>) = tagToId.getInt(type.java)
 
         fun getReader(id: Int) = try {
             idToType[id]
@@ -99,6 +99,7 @@ object EndTag : Tag(), TagType<EndTag> {
 
 data class ByteTag(val value: Byte) : Tag() {
     override fun write(out: DataOutput) = out.writeByte(value.toInt())
+
     companion object : TagType<ByteTag> {
         override fun read(din: DataInput) = ByteTag(din.readByte())
     }
@@ -110,6 +111,7 @@ data class ByteTag(val value: Byte) : Tag() {
 
 data class ShortTag(val value: Short) : Tag() {
     override fun write(out: DataOutput) = out.writeShort(value.toInt())
+
     companion object : TagType<ShortTag> {
         override fun read(din: DataInput) = ShortTag(din.readShort())
     }
@@ -121,6 +123,7 @@ data class ShortTag(val value: Short) : Tag() {
 
 data class IntTag(val value: Int) : Tag() {
     override fun write(out: DataOutput) = out.writeInt(value)
+
     companion object : TagType<IntTag> {
         override fun read(din: DataInput) = IntTag(din.readInt())
     }
@@ -132,6 +135,7 @@ data class IntTag(val value: Int) : Tag() {
 
 data class LongTag(val value: Long) : Tag() {
     override fun write(out: DataOutput) = out.writeLong(value)
+
     companion object : TagType<LongTag> {
         override fun read(din: DataInput) = LongTag(din.readLong())
     }
@@ -143,6 +147,7 @@ data class LongTag(val value: Long) : Tag() {
 
 data class FloatTag(val value: Float) : Tag() {
     override fun write(out: DataOutput) = out.writeFloat(value)
+
     companion object : TagType<FloatTag> {
         override fun read(din: DataInput) = FloatTag(din.readFloat())
     }
@@ -154,6 +159,7 @@ data class FloatTag(val value: Float) : Tag() {
 
 data class DoubleTag(val value: Double) : Tag() {
     override fun write(out: DataOutput) = out.writeDouble(value)
+
     companion object : TagType<DoubleTag> {
         override fun read(din: DataInput) = DoubleTag(din.readDouble())
     }
@@ -173,8 +179,7 @@ data class ByteArrayTag(val value: ByteArray) : Tag() {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
         other as ByteArrayTag
-        if (!value.contentEquals(other.value)) return false
-        return true
+        return value.contentEquals(other.value)
     }
 
     override fun hashCode(): Int = value.contentHashCode()
@@ -262,7 +267,7 @@ data class ListTag<T : Tag>(val value: MutableList<T>) : Tag(), MutableList<T> b
             if (!first) sb.append(',')
             if (indent) {
                 sb.append('\n')
-                for (i in 0 .. depth) sb.append(indentString)
+                for (i in 0..depth) sb.append(indentString)
             } else if (!first) {
                 sb.append(' ')
             }
@@ -360,7 +365,7 @@ data class CompoundTag(val value: MutableMap<String, Tag>) : Tag(), MutableMap<S
             if (!first) sb.append(',')
             if (indent) {
                 sb.append('\n')
-                for (i in 0 .. depth) sb.append("    ")
+                for (i in 0..depth) sb.append("    ")
             } else if (!first) {
                 sb.append(' ')
             }
@@ -427,8 +432,7 @@ data class IntArrayTag(val value: IntArray) : Tag() {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
         other as IntArrayTag
-        if (!value.contentEquals(other.value)) return false
-        return true
+        return value.contentEquals(other.value)
     }
 
     override fun hashCode() = value.contentHashCode()
@@ -461,8 +465,7 @@ data class LongArrayTag(val value: LongArray) : Tag() {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
         other as LongArrayTag
-        if (!value.contentEquals(other.value)) return false
-        return true
+        return value.contentEquals(other.value)
     }
 
     override fun hashCode() = value.contentHashCode()

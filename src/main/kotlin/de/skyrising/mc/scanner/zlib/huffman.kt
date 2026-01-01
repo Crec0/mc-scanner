@@ -10,7 +10,8 @@ interface HuffmanDecoder {
         val FIXED_DISTANCE_CODES = fromBytes(FIXED_DISTANCE_BIT_LENGTHS)!!
 
         fun fromBytes(buf: ByteArray) = fromBytes(buf, 0, buf.size)
-        fun fromBytes(buf: ByteArray, off: Int, len: Int): HuffmanDecoder? = SmartHuffmanDecoder.fromBytes(buf, off, len)
+        fun fromBytes(buf: ByteArray, off: Int, len: Int): HuffmanDecoder? =
+            SmartHuffmanDecoder.fromBytes(buf, off, len)
     }
 }
 
@@ -38,6 +39,7 @@ class SmartHuffmanDecoder(
         UIntArray(MAX_HUFFMAN_BITS + 1),
         UShortArray(MAX_HUFFMAN_SYMBOLS)
     )
+
     override fun decode(stream: BitStream): UInt {
         var bits = stream.peekBits(16)
         val lookupBits = bits and HUFFMAN_LUT_MASK
@@ -49,7 +51,7 @@ class SmartHuffmanDecoder(
             return sym.toUInt()
         }
         bits = Integer.reverse(bits) ushr (32 - MAX_HUFFMAN_BITS)
-        for (l in HUFFMAN_LUT_BITS + 1 .. MAX_HUFFMAN_BITS) {
+        for (l in HUFFMAN_LUT_BITS + 1..MAX_HUFFMAN_BITS) {
             if (bits >= sentinelBits[l].toInt()) continue
             bits = bits ushr (MAX_HUFFMAN_BITS - l)
             val symIdx = (offsetFirstSymbolIndex[l].toInt() + bits) and 0xffff
@@ -69,9 +71,9 @@ class SmartHuffmanDecoder(
             sb.append('(').append(len).append(',').append(sym).append(')')
         }
         sb.append("], ").append(sentinelBits.contentToString())
-          .append(", ").append(offsetFirstSymbolIndex.contentToString())
-          .append(", ").append(symbols.contentToString())
-          .append(')')
+            .append(", ").append(offsetFirstSymbolIndex.contentToString())
+            .append(", ").append(symbols.contentToString())
+            .append(')')
         return sb.toString()
     }
 
@@ -121,7 +123,8 @@ class SmartHuffmanDecoder(
             val padLen = HUFFMAN_LUT_BITS - length
             for (padding in 0 until (1 shl padLen)) {
                 val index = reverseCode or (padding shl length)
-                lookupTable[index] = ((length shl HUFFMAN_LUT_LEN_SHIFT) or (symbol shl HUFFMAN_LUT_SYM_SHIFT)).toUShort()
+                lookupTable[index] =
+                    ((length shl HUFFMAN_LUT_LEN_SHIFT) or (symbol shl HUFFMAN_LUT_SYM_SHIFT)).toUShort()
             }
         }
     }

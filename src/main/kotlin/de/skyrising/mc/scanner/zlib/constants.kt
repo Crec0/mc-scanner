@@ -22,6 +22,7 @@ const val BITS_MAX = 64 - 8
 
 // RFC 1951 - 3.2.5
 private data class PackedLengthSymbol(val symbol: UShort, val baseLength: UShort, val extraBits: UShort)
+
 private val PACKED_LENGTH_SYMBOLS = arrayOf(
     PackedLengthSymbol(257u, 3u, 0u),
     PackedLengthSymbol(258u, 4u, 0u),
@@ -70,6 +71,7 @@ private fun generateLengthToSymbol(): UShortArray {
 
 // RFC 1951 - 3.2.5
 private data class PackedDistance(val symbol: UShort, val baseDistance: UShort, val extraBits: UShort)
+
 private val PACKED_DISTANCES = arrayOf(
     PackedDistance(0u, 1u, 0u),
     PackedDistance(1u, 2u, 0u),
@@ -106,6 +108,7 @@ private val PACKED_DISTANCES = arrayOf(
 
 // RFC 1951 - 3.2.6
 private data class FixedLiteralBits(val baseValue: UShort, val bits: UShort)
+
 private val FIXED_LITERAL_BITS_TABLE = arrayOf(
     FixedLiteralBits(0u, 8u),
     FixedLiteralBits(144u, 9u),

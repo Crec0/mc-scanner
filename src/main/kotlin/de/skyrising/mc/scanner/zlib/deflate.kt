@@ -20,6 +20,7 @@ private fun decodeLength(symbol: Int, stream: BitStream) = when {
         val extraBits = (symbol - 261) / 4
         (((symbol - 265) % 4 + 4) shl extraBits) + 3 + stream.popBits(extraBits)
     }
+
     symbol == 285 -> 258
     else -> throw DataFormatException("invalid length symbol")
 }
@@ -30,10 +31,16 @@ fun decodeDistance(symbol: Int, stream: BitStream) = when {
         val extraBits = symbol / 2 - 1
         ((symbol % 2 + 2) shl extraBits) + 1 + stream.popBits(extraBits)
     }
+
     else -> throw DataFormatException("invalid distance symbol $symbol")
 }
 
-private fun readCompressedBlock(stream: BitStream, literalCode: HuffmanDecoder, distanceCode: HuffmanDecoder?, out: OutputBuffer) {
+private fun readCompressedBlock(
+    stream: BitStream,
+    literalCode: HuffmanDecoder,
+    distanceCode: HuffmanDecoder?,
+    out: OutputBuffer
+) {
     if (DEFLATE_DEBUG) println("compressed $literalCode $distanceCode")
     while (true) {
         val symbol = literalCode.decode(stream).toInt()
@@ -45,6 +52,7 @@ private fun readCompressedBlock(stream: BitStream, literalCode: HuffmanDecoder, 
                 if (DEFLATE_DEBUG) println("'")
                 continue
             }
+
             symbol == 256 -> return
             else -> {
                 if (distanceCode == null) throw DataFormatException("invalid symbol")
@@ -71,7 +79,8 @@ private fun decodeCodes(state: InflatorState, stream: BitStream) {
         codeLengthsCodeLengths[CODE_LENGTHS_CODE_LENGTHS_ORDER[i].toInt()] = stream.popBits(3).toByte()
     }
 
-    val codeLengthCode = HuffmanDecoder.fromBytes(codeLengthsCodeLengths) ?: throw DataFormatException("invalid code lengths code")
+    val codeLengthCode =
+        HuffmanDecoder.fromBytes(codeLengthsCodeLengths) ?: throw DataFormatException("invalid code lengths code")
 
     val codeLengths = ByteArray(literalCodeCount + distanceCodeCount)
     var i = 0
@@ -86,19 +95,23 @@ private fun decodeCodes(state: InflatorState, stream: BitStream) {
                     codeLengths[i++] = value
                 }
             }
+
             DEFLATE_CODE_LENGTHS_REPEAT_3 -> {
                 for (j in 0 until stream.popBits(3) + 3) codeLengths[i++] = 0
             }
+
             DEFLATE_CODE_LENGTHS_REPEAT_7 -> {
                 for (j in 0 until stream.popBits(7) + 11) codeLengths[i++] = 0
             }
+
             else -> {
                 codeLengths[i++] = symbol.toByte()
             }
         }
     }
 
-    state.literalCode = HuffmanDecoder.fromBytes(codeLengths, 0, literalCodeCount) ?: throw DataFormatException("invalid literal code")
+    state.literalCode =
+        HuffmanDecoder.fromBytes(codeLengths, 0, literalCodeCount) ?: throw DataFormatException("invalid literal code")
 
     if (distanceCodeCount == 1) {
         val length = codeLengths[literalCodeCount].toInt()
@@ -109,7 +122,8 @@ private fun decodeCodes(state: InflatorState, stream: BitStream) {
         if (length != 1) throw DataFormatException("invalid distance code")
     }
 
-    state.distanceCode = HuffmanDecoder.fromBytes(codeLengths, literalCodeCount, distanceCodeCount) ?: throw DataFormatException("invalid distance code")
+    state.distanceCode = HuffmanDecoder.fromBytes(codeLengths, literalCodeCount, distanceCodeCount)
+        ?: throw DataFormatException("invalid distance code")
 }
 
 private fun updateCodes(state: InflatorState, type: Int, stream: BitStream) = when (type) {
@@ -117,9 +131,11 @@ private fun updateCodes(state: InflatorState, type: Int, stream: BitStream) = wh
         state.literalCode = HuffmanDecoder.FIXED_LITERAL_CODES
         state.distanceCode = HuffmanDecoder.FIXED_DISTANCE_CODES
     }
+
     DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN -> {
         decodeCodes(state, stream)
     }
+
     else -> throw DataFormatException("invalid block type")
 }
 
@@ -219,10 +235,12 @@ fun inflate(stream: BitStream, arr: ByteArray): ByteBuffer {
                 }
                 out.pos += len
             }
+
             DEFLATE_BLOCKTYPE_FIXED_HUFFMAN, DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN -> {
                 updateCodes(state, type, stream)
                 readCompressedBlock(stream, state.literalCode, state.distanceCode, out)
             }
+
             else -> throw DataFormatException()
         }
     }

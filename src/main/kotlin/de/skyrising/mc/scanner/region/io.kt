@@ -8,7 +8,7 @@ import kotlin.concurrent.getOrSet
 
 private val decompressedBuf = ThreadLocal<ByteArray>()
 
-class RegionReader(private val channel: SeekableByteChannel): AutoCloseable {
+class RegionReader(private val channel: SeekableByteChannel) : AutoCloseable {
     private var fileSize: Long = 0
     private var chunkBuf: ByteBuffer? = null
 
@@ -49,7 +49,10 @@ class RegionReader(private val channel: SeekableByteChannel): AutoCloseable {
         try {
             readFully(channel, chunkBuf)
         } catch (e: IOException) {
-            throw IOException("Could not read chunk $chunkX, $chunkZ at offset ${offset * 4096L}, size ${sectors * 4096}, file size $fileSize", e)
+            throw IOException(
+                "Could not read chunk $chunkX, $chunkZ at offset ${offset * 4096L}, size ${sectors * 4096}, file size $fileSize",
+                e
+            )
         }
         chunkBuf.flip()
         return chunkBuf
@@ -76,6 +79,7 @@ class RegionReader(private val channel: SeekableByteChannel): AutoCloseable {
                     return
                 }
             }
+
             2 -> {
                 try {
                     val buf = DECOMPRESSOR.decodeZlib(chunkBuf, dbuf)
@@ -92,6 +96,7 @@ class RegionReader(private val channel: SeekableByteChannel): AutoCloseable {
                     return
                 }
             }
+
             else -> {
                 visitor.onUnsupportedCompressionType(compression.toInt())
                 return
@@ -105,7 +110,7 @@ class RegionReader(private val channel: SeekableByteChannel): AutoCloseable {
             visitor.onInvalidData(IllegalArgumentException("No data version"))
             return
         }
-        val version = chunk.getInt("DataVersion");
+        val version = chunk.getInt("DataVersion")
         if (!chunk.has("Level", Tag.COMPOUND) && version < DataVersion.REMOVE_LEVEL_TAG) {
             visitor.onInvalidData(IllegalArgumentException("No level tag"))
             return

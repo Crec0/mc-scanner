@@ -14,19 +14,20 @@ abstract class RegionVisitor() {
     }
 
     companion object {
-        fun visitAllChunks(visit: (x: Int, z: Int, version: Int, data: CompoundTag) -> Unit) = object : RegionVisitor() {
-            override fun visitChunk(x: Int, z: Int): ChunkVisitor {
-                return object : ChunkVisitor() {
-                    override fun visit(version: Int, data: CompoundTag) {
-                        visit(x, z, version, data)
-                    }
+        fun visitAllChunks(visit: (x: Int, z: Int, version: Int, data: CompoundTag) -> Unit) =
+            object : RegionVisitor() {
+                override fun visitChunk(x: Int, z: Int): ChunkVisitor {
+                    return object : ChunkVisitor() {
+                        override fun visit(version: Int, data: CompoundTag) {
+                            visit(x, z, version, data)
+                        }
 
-                    override fun onInvalidData(e: Exception) {
-                        e.printStackTrace()
+                        override fun onInvalidData(e: Exception) {
+                            e.printStackTrace()
+                        }
                     }
                 }
             }
-        }
     }
 }
 
