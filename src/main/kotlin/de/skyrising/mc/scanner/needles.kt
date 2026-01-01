@@ -1,15 +1,17 @@
 package de.skyrising.mc.scanner
 
-import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-interface Needle
+@Serializable
+sealed interface Needle
 
 private val BLOCK_STATE_MAP = readBlockStateMap()
 private val ITEM_MAP = readItemMap()
 
+@Serializable
 data class Identifier(val namespace: String, val path: String) : Comparable<Identifier> {
     override fun compareTo(other: Identifier): Int {
         val namespaceCompare = namespace.compareTo(other.namespace)
@@ -28,11 +30,14 @@ data class Identifier(val namespace: String, val path: String) : Comparable<Iden
             if (namespace == "minecraft") return ofMinecraft(path)
             return Identifier(namespace, path)
         }
+
         fun ofMinecraft(path: String) = Identifier("minecraft", path)
     }
 }
 
-data class BlockState(val id: Identifier, val properties: Map<String, String> = emptyMap()) : Needle, Comparable<BlockState> {
+@Serializable
+data class BlockState(val id: Identifier, val properties: Map<String, String> = emptyMap()) : Needle,
+    Comparable<BlockState> {
     fun unflatten(): List<BlockIdMask> {
         val list = mutableListOf<BlockIdMask>()
         var id: Int? = null
@@ -109,6 +114,7 @@ data class BlockState(val id: Identifier, val properties: Map<String, String> = 
     }
 }
 
+@Serializable
 data class BlockIdMask(val id: Int, val metaMask: Int, val blockState: BlockState? = null) : Needle {
     fun matches(id: Int, meta: Int) = this.id == id && (1 shl meta) and metaMask != 0
 
@@ -123,7 +129,9 @@ data class BlockIdMask(val id: Int, val metaMask: Int, val blockState: BlockStat
     }
 }
 
-data class ItemType(val id: Identifier, val damage: Int = -1, val flattened: Boolean = damage < 0) : Needle, Comparable<ItemType> {
+@Serializable
+data class ItemType(val id: Identifier, val damage: Int = -1, val flattened: Boolean = damage < 0) : Needle,
+    Comparable<ItemType> {
     fun flatten(): ItemType {
         if (this.flattened) return this
         var flattened = ITEM_MAP[this]
@@ -163,7 +171,8 @@ data class ItemType(val id: Identifier, val damage: Int = -1, val flattened: Boo
     }
 }
 
-private fun getFlatteningMap(name: String): JsonObject = Json.decodeFromString(BlockIdMask::class.java.getResourceAsStream("/flattening/$name.json")!!.reader().readText())
+private fun getFlatteningMap(name: String): JsonObject =
+    Json.decodeFromString(BlockIdMask::class.java.getResourceAsStream("/flattening/$name.json")!!.reader().readText())
 
 private fun readBlockStateMap(): Array<BlockState?> {
     val jsonMap = getFlatteningMap("block_states")

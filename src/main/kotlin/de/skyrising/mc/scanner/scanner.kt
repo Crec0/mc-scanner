@@ -2,11 +2,17 @@ package de.skyrising.mc.scanner
 
 import de.skyrising.mc.scanner.script.Scan
 import de.skyrising.mc.scanner.script.ScannerScript
-import it.unimi.dsi.fastutil.objects.*
+import it.unimi.dsi.fastutil.objects.Object2LongMap
 import joptsimple.OptionException
 import joptsimple.OptionParser
 import joptsimple.ValueConverter
-import java.io.PrintStream
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.Json
 import java.net.URI
 import java.nio.file.*
 import java.util.*
@@ -15,8 +21,10 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
-import java.util.function.ToIntFunction
-import kotlin.script.experimental.api.*
+import kotlin.script.experimental.api.EvaluationResult
+import kotlin.script.experimental.api.ResultWithDiagnostics
+import kotlin.script.experimental.api.constructorArgs
+import kotlin.script.experimental.api.valueOrThrow
 import kotlin.script.experimental.host.toScriptSource
 import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
 
@@ -30,19 +38,26 @@ fun main(args: Array<String>) {
     val itemArg = parser.acceptsAll(listOf("i", "item"), "Add an item to search for").withRequiredArg()
     val statsArg = parser.accepts("stats", "Calculate statistics for storage tech")
     val geode = parser.accepts("geode", "Calculate AFK spots for geodes")
-    val threadsArg = parser.acceptsAll(listOf("t", "threads"), "Set the number of threads to use").withRequiredArg().ofType(Integer::class.java)
+    val threadsArg = parser
+        .acceptsAll(listOf("t", "threads"), "Set the number of threads to use")
+        .withRequiredArg()
+        .ofType(Integer::class.java)
     val loopArg = parser.accepts("loop").withOptionalArg().ofType(Integer::class.java)
 
-    val decompressorArg = parser.accepts("decompressor", "Decompressor to use").withOptionalArg().withValuesConvertedBy(object : ValueConverter<Decompressor> {
-        override fun convert(value: String) = Decompressor.valueOf(value.uppercase())
-        override fun valueType() = Decompressor::class.java
-        override fun valuePattern() = "internal|java"
-    })
+    val decompressorArg = parser
+        .accepts("decompressor", "Decompressor to use")
+        .withOptionalArg()
+        .withValuesConvertedBy(object : ValueConverter<Decompressor> {
+            override fun convert(value: String) = Decompressor.valueOf(value.uppercase())
+            override fun valueType() = Decompressor::class.java
+            override fun valuePattern() = "internal|java"
+        })
     val needles = mutableListOf<Needle>()
     fun printUsage() {
         System.err.println("Usage: mc-scanner (-i <item> | -b <block>)* [options] <path> [output]")
         parser.printHelpOn(System.err)
     }
+
     var threads = 0
     var loopCount = 0
     val path: Path
@@ -97,7 +112,8 @@ fun main(args: Array<String>) {
                 zip = null
             } else {
                 val uri = out.toUri()
-                val fsUri = URI("jar:${uri.scheme}", uri.userInfo, uri.host, uri.port, uri.path, uri.query, uri.fragment)
+                val fsUri =
+                    URI("jar:${uri.scheme}", uri.userInfo, uri.host, uri.port, uri.path, uri.query, uri.fragment)
                 zip = FileSystems.newFileSystem(fsUri, mapOf<String, Any>("create" to "true"))
                 outPath = zip.getPath("/")
             }
@@ -205,49 +221,91 @@ fun runScript(path: Path, outPath: Path, executor: ExecutorService, needles: Lis
             print("\u001B[G")
         }
     }
+
+    val json = Json {
+        classDiscriminator = "clazz"
+    }
+
+    val searchResults = mutableListOf<SearchResult>()
+
     val index = AtomicInteger()
     printStatus(0)
     val before = System.nanoTime()
-    val futures = haystack.map { CompletableFuture.runAsync({
-        val results = try {
-            scan.scanner(it)
-        } catch (e: Exception) {
-            print("\u001b[2K")
-            System.err.println("Error scanning $it")
-            e.printStackTrace()
-            println()
-            return@runAsync
-        }
-        val time = System.nanoTime() - before
-        val progressAfter = progressSize.addAndGet(it.size)
-        speed = progressAfter * 1e9 / time
-        synchronized(scan) {
-            scan.onResults(results)
-            resultCount += results.size
-        }
-        printStatus(index.incrementAndGet(), it)
-    }, executor)}
+    val futures = haystack.map {
+        CompletableFuture.runAsync({
+            val results = try {
+                scan.scanner(it)
+            } catch (e: Exception) {
+                print("\u001b[2K")
+                System.err.println("Error scanning $it")
+                e.printStackTrace()
+                println()
+                return@runAsync
+            }
+            val time = System.nanoTime() - before
+            val progressAfter = progressSize.addAndGet(it.size)
+            speed = progressAfter * 1e9 / time
+            synchronized(scan) {
+                scan.onResults(results)
+                resultCount += results.size
+                searchResults.addAll(results)
+            }
+            printStatus(index.incrementAndGet(), it)
+        }, executor)
+    }
     CompletableFuture.allOf(*futures.toTypedArray()).join()
     scan.postProcess()
     printStatus(haystack.size)
-    println()
 
+    println(json.encodeToString(searchResults))
+
+    println()
 }
 
 interface Scannable {
     val size: Long
     fun scan(needles: Collection<Needle>, statsMode: Boolean): List<SearchResult>
 }
-interface Location
 
-data class SubLocation(val parent: Location, val index: Int): Location
+@Serializable
+sealed interface Location
+
+@Serializable
+data class SubLocation(val parent: Location, val index: Int) : Location
+
+@Serializable
 data class ChunkPos(val dimension: String, val x: Int, val z: Int) : Location
+
+@Serializable
 data class Container(val type: String, val location: Location) : Location
+
+@Serializable
 data class Entity(val type: String, val location: Location) : Location
+
+@Serializable
 data class BlockPos(val dimension: String, val x: Int, val y: Int, val z: Int) : Location
+
+@Serializable
 data class Vec3d(val dimension: String, val x: Double, val y: Double, val z: Double) : Location
-data class PlayerInventory(val player: UUID, val enderChest: Boolean) : Location
-data class StatsResults(val types: Array<ItemType>, val matrix: DoubleArray): Needle {
+
+@Serializable
+data class PlayerInventory(@Serializable(with = UUIDSerializer::class) val player: UUID, val enderChest: Boolean) :
+    Location
+
+object UUIDSerializer : KSerializer<UUID> {
+    override val descriptor = PrimitiveSerialDescriptor("UUID", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: UUID) {
+        encoder.encodeString(value.toString())
+    }
+
+    override fun deserialize(decoder: Decoder): UUID {
+        return UUID.fromString(decoder.decodeString())
+    }
+}
+
+@Serializable
+data class StatsResults(val types: Array<ItemType>, val matrix: DoubleArray) : Needle {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -267,9 +325,15 @@ data class StatsResults(val types: Array<ItemType>, val matrix: DoubleArray): Ne
     }
 }
 
+@Serializable
 data class SearchResult(val needle: Needle, val location: Location, val count: Long)
 
-fun addResults(results: MutableList<SearchResult>, location: Location, contents: List<Object2LongMap<ItemType>>, statsMode: Boolean) {
+fun addResults(
+    results: MutableList<SearchResult>,
+    location: Location,
+    contents: List<Object2LongMap<ItemType>>,
+    statsMode: Boolean
+) {
     for (e in contents[0].object2LongEntrySet()) {
         results.add(SearchResult(e.key, location, e.longValue))
     }

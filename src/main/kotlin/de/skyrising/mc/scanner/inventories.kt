@@ -7,12 +7,11 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.*
 import java.util.function.LongPredicate
-import kotlin.collections.LinkedHashMap
-import kotlin.collections.LinkedHashSet
 
 data class PlayerFile(private val path: Path) : Scannable {
     override val size: Long = Files.size(path)
     val uuid: UUID
+
     init {
         val nameParts = path.fileName.toString().split('.')
         if (nameParts.size != 2 || nameParts[1] != "dat") throw IllegalArgumentException("Invalid player file: ${path.fileName}")
@@ -40,7 +39,12 @@ data class PlayerFile(private val path: Path) : Scannable {
     }
 }
 
-fun scanInventory(slots: ListTag<CompoundTag>, needles: Collection<ItemType>, statsMode: Boolean, chunkVer: Int): List<Object2LongMap<ItemType>> {
+fun scanInventory(
+    slots: ListTag<CompoundTag>,
+    needles: Collection<ItemType>,
+    statsMode: Boolean,
+    chunkVer: Int
+): List<Object2LongMap<ItemType>> {
     val byId = LinkedHashMap<Identifier, MutableSet<ItemType>>()
     for (needle in needles) {
         byId.computeIfAbsent(needle.id) { LinkedHashSet() }.add(needle)
@@ -86,14 +90,20 @@ fun flatten(items: Object2LongMap<ItemType>) {
         if (e.key.flattened) continue
         val flattened = e.key.flatten()
         if (flattened == e.key) continue
-        updates[flattened] = if (flattened in updates) updates.getLong(flattened) else items.getLong(flattened) + e.longValue
+        updates[flattened] =
+            if (flattened in updates) updates.getLong(flattened) else items.getLong(flattened) + e.longValue
         e.setValue(0)
     }
     items.putAll(updates)
-    items.values.removeIf(LongPredicate{ it == 0L })
+    items.values.removeIf(LongPredicate { it == 0L })
 }
 
-fun getSubResults(slot: CompoundTag, needles: Collection<ItemType>, statsMode: Boolean, chunkVer: Int): List<Object2LongMap<ItemType>> {
+fun getSubResults(
+    slot: CompoundTag,
+    needles: Collection<ItemType>,
+    statsMode: Boolean,
+    chunkVer: Int
+): List<Object2LongMap<ItemType>> {
     if (chunkVer > DataVersion.COMPONENTS_REWORK) {
         if (!slot.has("components", Tag.COMPOUND)) return emptyList()
         val components = slot.getCompound("components")
