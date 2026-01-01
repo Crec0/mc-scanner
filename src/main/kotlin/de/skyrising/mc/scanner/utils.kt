@@ -57,7 +57,7 @@ fun hexdump(buf: ByteBuffer, addr: Int = 0): String {
             sb.append("| ")
             for (j in 0..15) {
                 val c = line[j]
-                sb.append(if (c < 0x20 || c >= 0x7f) '.' else c.toChar())
+                sb.append(if (c < 0x20 || c >= 0x7f) '.' else c.toInt().toChar())
             }
             sb.append('\n')
             sb.append(String.format("%0" + digits + "x: ", addr + i))
@@ -72,7 +72,7 @@ fun hexdump(buf: ByteBuffer, addr: Int = 0): String {
         sb.append("| ")
         for (j in 0 until i) {
             val c = line[j]
-            sb.append(if (c < 0x20 || c >= 0x7f) '.' else c.toChar())
+            sb.append(if (c < 0x20 || c >= 0x7f) '.' else c.toInt().toChar())
         }
         sb.append('\n')
     }

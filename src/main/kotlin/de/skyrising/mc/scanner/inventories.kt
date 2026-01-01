@@ -26,19 +26,21 @@ data class PlayerFile(private val path: Path) : Scannable {
         val data = Tag.read(ByteBufferDataInput(DECOMPRESSOR.decodeGzip(ByteBuffer.wrap(raw))))
         if (data !is CompoundTag) return emptyList()
         val results = mutableListOf<SearchResult>()
+
+        val chunkVer = data.getInt("DataVersion")
         if (data.has("Inventory", Tag.LIST)) {
-            val invScan = scanInventory(data.getList("Inventory"), itemNeedles, statsMode)
+            val invScan = scanInventory(data.getList("Inventory"), itemNeedles, statsMode, chunkVer)
             addResults(results, PlayerInventory(uuid, false), invScan, statsMode)
         }
         if (data.has("EnderItems", Tag.LIST)) {
-            val enderScan = scanInventory(data.getList("EnderItems"), itemNeedles, statsMode)
+            val enderScan = scanInventory(data.getList("EnderItems"), itemNeedles, statsMode, chunkVer)
             addResults(results, PlayerInventory(uuid, true), enderScan, statsMode)
         }
         return results
     }
 }
 
-fun scanInventory(slots: ListTag<CompoundTag>, needles: Collection<ItemType>, statsMode: Boolean): List<Object2LongMap<ItemType>> {
+fun scanInventory(slots: ListTag<CompoundTag>, needles: Collection<ItemType>, statsMode: Boolean, chunkVer: Int): List<Object2LongMap<ItemType>> {
     val byId = LinkedHashMap<Identifier, MutableSet<ItemType>>()
     for (needle in needles) {
         byId.computeIfAbsent(needle.id) { LinkedHashSet() }.add(needle)
@@ -48,7 +50,7 @@ fun scanInventory(slots: ListTag<CompoundTag>, needles: Collection<ItemType>, st
     for (slot in slots) {
         if (!slot.has("id", Tag.STRING)) continue
         val id = Identifier.of(slot.getString("id"))
-        val contained = getSubResults(slot, needles, statsMode)
+        val contained = getSubResults(slot, needles, statsMode, chunkVer)
         val matchingTypes = byId[id]
         if (matchingTypes != null || (byId.isEmpty() && statsMode && contained.isEmpty())) {
             val dmg = if (slot.has("Damage", Tag.INTEGER)) slot.getInt("Damage") else null
@@ -61,7 +63,8 @@ fun scanInventory(slots: ListTag<CompoundTag>, needles: Collection<ItemType>, st
                 }
             }
             if (bestMatch != null) {
-                result.addTo(bestMatch, slot.getInt("Count").toLong())
+                val countKey = if (chunkVer >= DataVersion.COMPONENTS_REWORK) "count" else "Count"
+                result.addTo(bestMatch, slot.getInt(countKey).toLong())
             }
         }
         if (contained.isEmpty()) continue
@@ -90,13 +93,22 @@ fun flatten(items: Object2LongMap<ItemType>) {
     items.values.removeIf(LongPredicate{ it == 0L })
 }
 
-fun getSubResults(slot: CompoundTag, needles: Collection<ItemType>, statsMode: Boolean): List<Object2LongMap<ItemType>> {
+fun getSubResults(slot: CompoundTag, needles: Collection<ItemType>, statsMode: Boolean, chunkVer: Int): List<Object2LongMap<ItemType>> {
+    if (chunkVer > DataVersion.COMPONENTS_REWORK) {
+        if (!slot.has("components", Tag.COMPOUND)) return emptyList()
+        val components = slot.getCompound("components")
+
+        if (!components.has("minecraft:container", Tag.LIST)) return emptyList()
+        val items = components.getList<CompoundTag>("minecraft:container").map { it.getCompound("item") }
+
+        return scanInventory(ListTag(items), needles, statsMode, chunkVer)
+    }
     if (!slot.has("tag", Tag.COMPOUND)) return emptyList()
     val tag = slot.getCompound("tag")
     if (!tag.has("BlockEntityTag", Tag.COMPOUND)) return emptyList()
     val blockEntityTag = tag.getCompound("BlockEntityTag")
     if (!blockEntityTag.has("Items", Tag.LIST)) return emptyList()
-    return scanInventory(blockEntityTag.getList("Items"), needles, statsMode)
+    return scanInventory(blockEntityTag.getList("Items"), needles, statsMode, chunkVer)
 }
 
 fun tallyStats(scan: Object2LongMap<ItemType>): StatsResults {

@@ -32,6 +32,7 @@ fun main(args: Array<String>) {
     val geode = parser.accepts("geode", "Calculate AFK spots for geodes")
     val threadsArg = parser.acceptsAll(listOf("t", "threads"), "Set the number of threads to use").withRequiredArg().ofType(Integer::class.java)
     val loopArg = parser.accepts("loop").withOptionalArg().ofType(Integer::class.java)
+
     val decompressorArg = parser.accepts("decompressor", "Decompressor to use").withOptionalArg().withValuesConvertedBy(object : ValueConverter<Decompressor> {
         override fun convert(value: String) = Decompressor.valueOf(value.uppercase())
         override fun valueType() = Decompressor::class.java
@@ -159,9 +160,23 @@ fun getHaystack(path: Path): Set<Scannable> {
     return haystack
 }
 
+//fun builtinScript(name: String): Path {
+//    val url = ScannerScript::class.java.getResource("/scripts/$name.scan.kts")
+//    print(url?.toURI().toString())
+//    return Paths.get(url?.toURI() ?: throw IllegalArgumentException("Script not found: $name"))
+//}
 fun builtinScript(name: String): Path {
-    val url = ScannerScript::class.java.getResource("/scripts/$name.scan.kts")
-    return Paths.get(url?.toURI() ?: throw IllegalArgumentException("Script not found: $name"))
+    val uri = ScannerScript::class.java
+        .getResource("/scripts/$name.scan.kts")
+        ?.toURI()
+        ?: throw IllegalArgumentException("Script not found: $name")
+
+    if (uri.scheme == "jar") {
+        // Ensure zipfs is created (no-op if already exists)
+        FileSystems.newFileSystem(uri, emptyMap<String, Any>())
+    }
+
+    return Paths.get(uri)
 }
 
 fun evalScript(path: Path, scan: Scan): ResultWithDiagnostics<EvaluationResult> {

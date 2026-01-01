@@ -141,7 +141,7 @@ private fun scanChunkItems(version: Int, data: CompoundTag, itemNeedles: Set<Ite
     if (data.has(blockEntitiesTag, Tag.LIST)) {
         for (blockEntity in data.getList<CompoundTag>(blockEntitiesTag)) {
             if (!blockEntity.has("Items", Tag.LIST)) continue
-            val contents = scanInventory(blockEntity.getList("Items"), itemNeedles, statsMode)
+            val contents = scanInventory(blockEntity.getList("Items"), itemNeedles, statsMode, version)
             val pos = BlockPos(dimension, blockEntity.getInt("x"), blockEntity.getInt("y"), blockEntity.getInt("z"))
             val container = Container(blockEntity.getString("id"), pos)
             addResults(results, container, contents, statsMode)
@@ -161,7 +161,7 @@ private fun scanChunkItems(version: Int, data: CompoundTag, itemNeedles: Set<Ite
                 val posTag = entity.getList<DoubleTag>("Pos")
                 val pos = Vec3d(dimension, posTag[0].value, posTag[1].value, posTag[2].value)
                 val entityLocation = Entity(id, pos)
-                val contents = scanInventory(listTag, itemNeedles, statsMode)
+                val contents = scanInventory(listTag, itemNeedles, statsMode, version)
                 addResults(results, entityLocation, contents, statsMode)
             }
         }
