@@ -121,14 +121,14 @@ fun main(args: Array<String>) {
 
         if (!nonOptionArgs.isEmpty()) throw IllegalArgumentException("Expected no optional args")
 
-        if (Files.exists(out) && Files.isDirectory(out)) {
-            outPath = out
-            outputJson = false
-            zip = null
-        } else if (out.fileName.toString().endsWith(".json")) {
-            Files.createDirectories(out)
+        if (out.fileName.toString().endsWith(".json")) {
+            out.createParentDirectories()
             outPath = out
             outputJson = true
+            zip = null
+        } else if (Files.exists(out) && Files.isDirectory(out)) {
+            outPath = out
+            outputJson = false
             zip = null
         } else if (!out.fileName.toString().endsWith(".zip")) {
             Files.createDirectories(out)
@@ -236,7 +236,7 @@ fun evalScript(path: Path, scan: Scan): ResultWithDiagnostics<EvaluationResult> 
 }
 
 fun runScript(path: List<Path>, outPath: Path, outputJson: Boolean, executor: ExecutorService, needles: List<Needle>, script: Path) {
-    val scan = Scan(outPath, needles)
+    val scan = Scan(outPath, needles, outputJson)
     evalScript(script, scan).valueOrThrow()
     val haystack = getHaystack(path).filterTo(mutableSetOf(), scan.haystackPredicate)
     var totalSize = 0L
@@ -256,7 +256,7 @@ fun runScript(path: List<Path>, outPath: Path, outputJson: Boolean, executor: Ex
     }
 
     val json = Json {
-        classDiscriminator = "clazz"
+        classDiscriminator = "class"
     }
 
     val searchResults = mutableListOf<SearchResult>()
@@ -291,7 +291,7 @@ fun runScript(path: List<Path>, outPath: Path, outputJson: Boolean, executor: Ex
     printStatus(haystack.size)
 
     if (outputJson) {
-        val outputStream = PrintStream(Files.newOutputStream(outPath.resolve("results.json")), false, "UTF-8")
+        val outputStream = PrintStream(Files.newOutputStream(outPath), false, "UTF-8")
         outputStream.println(json.encodeToString(searchResults))
         outputStream.close()
     }

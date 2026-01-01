@@ -6,7 +6,10 @@ import java.io.PrintStream
 import java.nio.file.Files
 import kotlin.system.exitProcess
 
-val resultsFile = PrintStream(Files.newOutputStream(outPath.resolve("results.txt")), false, "UTF-8")
+
+val outfile = if (outputJson) { outPath } else { outPath.resolve("results.txt") }
+
+val resultsFile = PrintStream(Files.newOutputStream(outfile), false, "UTF-8")
 val total = Object2LongOpenHashMap<Needle>()
 
 if (needles.isEmpty()) {
@@ -16,9 +19,15 @@ if (needles.isEmpty()) {
 
 println(needles)
 
+fun writeToFile(txt: String) {
+    if (!outputJson) {
+        resultsFile.println(txt)
+    }
+}
+
 onResults {
     for (result in this) {
-        resultsFile.println("${result.location}: ${result.needle} x ${result.count}")
+        writeToFile("${result.location}: ${result.needle} x ${result.count}")
         if (result.location is SubLocation) continue
         total.addTo(result.needle, result.count)
     }
@@ -33,6 +42,6 @@ after {
         0
     }
     for (type in totalTypes) {
-        resultsFile.println("Total $type: ${total.getLong(type)}")
+        writeToFile("Total $type: ${total.getLong(type)}")
     }
 }

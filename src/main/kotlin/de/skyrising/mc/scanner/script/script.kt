@@ -59,9 +59,10 @@ object ScannerScriptConfiguration : ScriptCompilationConfiguration({
 interface ScanBase {
     val outPath: Path
     var needles: List<Needle>
+    val outputJson: Boolean
 }
 
-class Scan(override val outPath: Path, override var needles: List<Needle>) : ScanBase {
+class Scan(override val outPath: Path, override var needles: List<Needle>, override val outputJson: Boolean) : ScanBase {
     var haystackPredicate: (Scannable) -> Boolean = { true }
     var scanner: (Scannable) -> List<SearchResult> = { it.scan(needles, false) }
     var onResults: (List<SearchResult>) -> Unit = {}
