@@ -119,7 +119,7 @@ fun main(args: Array<String>) {
             else -> builtinScript("search")
         }
 
-        if (!nonOptionArgs.isEmpty()) throw IllegalArgumentException("Expected no optional args")
+        if (nonOptionArgs.size > 1) throw IllegalArgumentException("Expected at most 1 optional arg")
 
         if (out.fileName.toString().endsWith(".json")) {
             out.createParentDirectories()
