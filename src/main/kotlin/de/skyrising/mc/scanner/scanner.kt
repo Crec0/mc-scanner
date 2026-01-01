@@ -13,6 +13,7 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
+import java.io.PrintStream
 import java.net.URI
 import java.nio.file.*
 import java.util.*
@@ -21,7 +22,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.io.path.Path
+import kotlin.io.path.createParentDirectories
 import kotlin.jvm.optionals.getOrElse
 import kotlin.script.experimental.api.EvaluationResult
 import kotlin.script.experimental.api.ResultWithDiagnostics
@@ -72,6 +73,7 @@ fun main(args: Array<String>) {
     val outPath: Path
     val zip: FileSystem?
     val script: Path
+    val outputJson: Boolean
 
     try {
         val options = parser.parse(*args)
@@ -121,16 +123,24 @@ fun main(args: Array<String>) {
 
         if (Files.exists(out) && Files.isDirectory(out)) {
             outPath = out
+            outputJson = false
+            zip = null
+        } else if (out.fileName.toString().endsWith(".json")) {
+            Files.createDirectories(out)
+            outPath = out
+            outputJson = true
             zip = null
         } else if (!out.fileName.toString().endsWith(".zip")) {
             Files.createDirectories(out)
             outPath = out
+            outputJson = false
             zip = null
         } else {
             val uri = out.toUri()
             val fsUri =
                 URI("jar:${uri.scheme}", uri.userInfo, uri.host, uri.port, uri.path, uri.query, uri.fragment)
             zip = FileSystems.newFileSystem(fsUri, mapOf<String, Any>("create" to "true"))
+            outputJson = false
             outPath = zip.getPath("/")
         }
     } catch (e: RuntimeException) {
@@ -151,7 +161,7 @@ fun main(args: Array<String>) {
     }
 
     do {
-        runScript(inPaths, outPath, executor, needles, script)
+        runScript(inPaths, outPath, outputJson, executor, needles, script)
     } while (loopCount == -1 || loopCount-- > 0)
 
     zip?.close()
@@ -225,7 +235,7 @@ fun evalScript(path: Path, scan: Scan): ResultWithDiagnostics<EvaluationResult> 
     })
 }
 
-fun runScript(path: List<Path>, outPath: Path, executor: ExecutorService, needles: List<Needle>, script: Path) {
+fun runScript(path: List<Path>, outPath: Path, outputJson: Boolean, executor: ExecutorService, needles: List<Needle>, script: Path) {
     val scan = Scan(outPath, needles)
     evalScript(script, scan).valueOrThrow()
     val haystack = getHaystack(path).filterTo(mutableSetOf(), scan.haystackPredicate)
@@ -280,7 +290,11 @@ fun runScript(path: List<Path>, outPath: Path, executor: ExecutorService, needle
     scan.postProcess()
     printStatus(haystack.size)
 
-    println(json.encodeToString(searchResults))
+    if (outputJson) {
+        val outputStream = PrintStream(Files.newOutputStream(outPath.resolve("results.json")), false, "UTF-8")
+        outputStream.println(json.encodeToString(searchResults))
+        outputStream.close()
+    }
 
     println()
 }
