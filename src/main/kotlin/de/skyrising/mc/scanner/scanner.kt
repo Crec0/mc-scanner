@@ -21,6 +21,8 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.io.path.Path
+import kotlin.jvm.optionals.getOrElse
 import kotlin.script.experimental.api.EvaluationResult
 import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.api.constructorArgs
@@ -34,14 +36,19 @@ fun main(args: Array<String>) {
     val parser = OptionParser()
     val helpArg = parser.accepts("help").forHelp()
     val nonOptions = parser.nonOptions()
+
     val blockArg = parser.acceptsAll(listOf("b", "block"), "Add a block to search for").withRequiredArg()
     val itemArg = parser.acceptsAll(listOf("i", "item"), "Add an item to search for").withRequiredArg()
+    val inPathArg = parser.acceptsAll(listOf("p", "path"), "Paths to scan").withRequiredArg()
+    val outPathArg = parser.acceptsAll(listOf("o", "out"), "Output path").withOptionalArg()
+
     val statsArg = parser.accepts("stats", "Calculate statistics for storage tech")
     val geode = parser.accepts("geode", "Calculate AFK spots for geodes")
     val threadsArg = parser
         .acceptsAll(listOf("t", "threads"), "Set the number of threads to use")
         .withRequiredArg()
         .ofType(Integer::class.java)
+
     val loopArg = parser.accepts("loop").withOptionalArg().ofType(Integer::class.java)
 
     val decompressorArg = parser
@@ -53,33 +60,44 @@ fun main(args: Array<String>) {
             override fun valuePattern() = "internal|java"
         })
     val needles = mutableListOf<Needle>()
+
     fun printUsage() {
-        System.err.println("Usage: mc-scanner (-i <item> | -b <block>)* [options] <path> [output]")
+        System.err.println("Usage: mc-scanner (-i <item> | -b <block>)* [options] <-p|path path>+ [-o|out output]")
         parser.printHelpOn(System.err)
     }
 
     var threads = 0
     var loopCount = 0
-    val path: Path
+    val inPaths = mutableListOf<Path>()
     val outPath: Path
     val zip: FileSystem?
     val script: Path
+
     try {
         val options = parser.parse(*args)
         if (options.has(helpArg)) {
             printUsage()
             return
         }
+
         for (block in options.valuesOf(blockArg)) {
             val state = BlockState.parse(block)
             needles.add(state)
             needles.addAll(state.unflatten())
         }
+
         for (item in options.valuesOf(itemArg)) {
             val itemType = ItemType.parse(item)
             needles.add(itemType)
             needles.addAll(itemType.unflatten())
         }
+
+        for (inPath in options.valuesOf(inPathArg)) {
+            inPaths.add(Paths.get(inPath))
+        }
+
+        val out = Paths.get(options.valueOfOptional(outPathArg).getOrElse { "" })
+
         if (options.has(threadsArg)) threads = options.valueOf(threadsArg).toInt()
         if (options.has(decompressorArg)) DECOMPRESSOR = options.valueOf(decompressorArg)
         if (options.has(loopArg)) {
@@ -89,34 +107,31 @@ fun main(args: Array<String>) {
                 -1
             }
         }
-        val paths = options.valuesOf(nonOptions).toMutableList()
+
+        val nonOptionArgs = options.valuesOf(nonOptions).toMutableList()
+
         script = when {
             options.has(statsArg) -> builtinScript("stats")
             options.has(geode) -> builtinScript("geode")
-            paths.isNotEmpty() && paths[0].endsWith(".scan.kts") -> Paths.get(paths.removeAt(0))
+            nonOptionArgs.isNotEmpty() && nonOptionArgs[0].endsWith(".scan.kts") -> Paths.get(nonOptionArgs.removeAt(0))
             else -> builtinScript("search")
         }
-        if (paths.size > 2 || paths.isEmpty()) throw IllegalArgumentException("Expected 1 or 2 paths")
-        path = Paths.get(paths[0])
-        if (paths.size == 1) {
-            outPath = Paths.get("")
+
+        if (!nonOptionArgs.isEmpty()) throw IllegalArgumentException("Expected no optional args")
+
+        if (Files.exists(out) && Files.isDirectory(out)) {
+            outPath = out
+            zip = null
+        } else if (!out.fileName.toString().endsWith(".zip")) {
+            Files.createDirectories(out)
+            outPath = out
             zip = null
         } else {
-            val out = Paths.get(paths[1])
-            if (Files.exists(out) && Files.isDirectory(out)) {
-                outPath = out
-                zip = null
-            } else if (!out.fileName.toString().endsWith(".zip")) {
-                Files.createDirectories(out)
-                outPath = out
-                zip = null
-            } else {
-                val uri = out.toUri()
-                val fsUri =
-                    URI("jar:${uri.scheme}", uri.userInfo, uri.host, uri.port, uri.path, uri.query, uri.fragment)
-                zip = FileSystems.newFileSystem(fsUri, mapOf<String, Any>("create" to "true"))
-                outPath = zip.getPath("/")
-            }
+            val uri = out.toUri()
+            val fsUri =
+                URI("jar:${uri.scheme}", uri.userInfo, uri.host, uri.port, uri.path, uri.query, uri.fragment)
+            zip = FileSystems.newFileSystem(fsUri, mapOf<String, Any>("create" to "true"))
+            outPath = zip.getPath("/")
         }
     } catch (e: RuntimeException) {
         if (e is OptionException || e is IllegalArgumentException) {
@@ -128,51 +143,59 @@ fun main(args: Array<String>) {
         printUsage()
         return
     }
+
     val executor = when {
         threads <= 0 -> Executors.newWorkStealingPool()
         threads == 1 -> Executors.newSingleThreadExecutor()
         else -> Executors.newWorkStealingPool(threads)
     }
+
     do {
-        runScript(path, outPath, executor, needles, script)
+        runScript(inPaths, outPath, executor, needles, script)
     } while (loopCount == -1 || loopCount-- > 0)
+
     zip?.close()
     executor.shutdownNow()
 }
 
-fun getHaystack(path: Path): Set<Scannable> {
+fun getHaystack(paths: List<Path>): Set<Scannable> {
     val haystack = mutableSetOf<Scannable>()
-    if (Files.isRegularFile(path) && path.fileName.toString().endsWith(".mca")) {
-        return setOf(RegionFile(path))
-    }
-    val playerDataPath = path.resolve("playerdata")
-    if (Files.exists(playerDataPath)) {
-        Files.list(playerDataPath).forEach {
-            val fileName = it.fileName.toString()
-            if (fileName.endsWith(".dat") && fileName.split('-').size == 5) {
-                try {
-                    haystack.add(PlayerFile(it))
-                } catch (e: Exception) {
-                    e.printStackTrace()
+    for (path in paths) {
+        if (Files.isRegularFile(path) && path.fileName.toString().endsWith(".mca")) {
+            haystack.add(RegionFile(path))
+        }
+
+        val playerDataPath = path.resolve("playerdata")
+        if (Files.exists(playerDataPath)) {
+            Files.list(playerDataPath).forEach {
+                val fileName = it.fileName.toString()
+                if (fileName.endsWith(".dat") && fileName.split('-').size == 5) {
+                    try {
+                        haystack.add(PlayerFile(it))
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
+
+        for (dim in listOf(".", "DIM-1", "DIM1")) {
+            val dimPath = path.resolve(dim)
+            if (!Files.exists(dimPath)) continue
+            val dimRegionPath = dimPath.resolve("region")
+            if (!Files.exists(dimRegionPath)) continue
+            Files.list(dimRegionPath).forEach {
+                if (it.fileName.toString().endsWith(".mca")) {
+                    try {
+                        haystack.add(RegionFile(it))
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             }
         }
     }
-    for (dim in listOf(".", "DIM-1", "DIM1")) {
-        val dimPath = path.resolve(dim)
-        if (!Files.exists(dimPath)) continue
-        val dimRegionPath = dimPath.resolve("region")
-        if (!Files.exists(dimRegionPath)) continue
-        Files.list(dimRegionPath).forEach {
-            if (it.fileName.toString().endsWith(".mca")) {
-                try {
-                    haystack.add(RegionFile(it))
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-        }
-    }
+
     return haystack
 }
 
@@ -202,7 +225,7 @@ fun evalScript(path: Path, scan: Scan): ResultWithDiagnostics<EvaluationResult> 
     })
 }
 
-fun runScript(path: Path, outPath: Path, executor: ExecutorService, needles: List<Needle>, script: Path) {
+fun runScript(path: List<Path>, outPath: Path, executor: ExecutorService, needles: List<Needle>, script: Path) {
     val scan = Scan(outPath, needles)
     evalScript(script, scan).valueOrThrow()
     val haystack = getHaystack(path).filterTo(mutableSetOf(), scan.haystackPredicate)
