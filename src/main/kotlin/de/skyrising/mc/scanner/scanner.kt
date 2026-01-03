@@ -320,7 +320,16 @@ data class Container(val type: String, val location: Location) : Location
 data class Entity(val type: String, val location: Location) : Location
 
 @Serializable
-data class BlockPos(val dimension: String, val x: Int, val y: Int, val z: Int) : Location
+data class BlockPos(val dimension: String, val x: Int, val y: Int, val z: Int) : Location {
+    companion object {
+        fun fromChunkSection(chunkPos: ChunkPos, sectionIdx: Int, offsetX: Int, offsetY: Int, offsetZ: Int): BlockPos {
+            val absoluteSectionX = chunkPos.x shl 4
+            val absoluteSectionY = sectionIdx * 16
+            val absoluteSectionZ = chunkPos.z shl 4
+            return BlockPos(chunkPos.dimension, absoluteSectionX + offsetX, absoluteSectionY + offsetY, absoluteSectionZ + offsetZ)
+        }
+    }
+}
 
 @Serializable
 data class Vec3d(val dimension: String, val x: Double, val y: Double, val z: Double) : Location

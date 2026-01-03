@@ -156,12 +156,17 @@ private fun scanFlattenedChunk(
             }
         }
         if (matchingPaletteEntries.isEmpty()) continue
-        val counts = scanBlockStates(
+        val (counts, sectionResults) = scanBlockStates(
             matchingPaletteEntries,
             blockStates,
+            chunkPos,
+            section.getInt("Y"),
             palette.size,
             version < DataVersion.NON_PACKED_BLOCK_STATES
         )
+
+        results.addAll(sectionResults)
+
         for (e in counts.object2IntEntrySet()) {
             matches[e.key] = matches.getInt(e.key) + e.intValue
         }
@@ -213,15 +218,22 @@ private fun scanChunkItems(
 fun scanBlockStates(
     ids: Int2ObjectMap<BlockState>,
     blockStates: LongArray,
+    chunkPos: ChunkPos,
+    sectionY: Int,
     paletteSize: Int,
     packed: Boolean
-): Object2IntMap<BlockState> {
+): Pair<Object2IntMap<BlockState>, MutableList<SearchResult>> {
+    val results = mutableListOf<SearchResult>()
     val counts = Object2IntOpenHashMap<BlockState>()
     val bits = maxOf(4, ceil(log2(paletteSize.toDouble())).toInt())
     val mask = (1 shl bits) - 1
     var longIndex = 0
     var subIndex = 0
-    repeat(16 * 16 * 16) {
+    repeat(16 * 16 * 16) { blockIdx ->
+        val y = blockIdx / 256
+        val z = (blockIdx % 256) / 16
+        val x = (blockIdx % 256) % 16
+
         if (subIndex + bits > 64 && !packed) {
             longIndex++
             subIndex = 0
@@ -238,9 +250,10 @@ fun scanBlockStates(
         if (id in ids) {
             val state = ids[id]
             counts[state] = counts.getInt(state) + 1
+            results.add(SearchResult(state, BlockPos.fromChunkSection(chunkPos, sectionY, x, y, z), 1))
         }
         if (subIndex + bits == 64) longIndex++
         subIndex = (subIndex + bits) and 0x3f
     }
-    return counts
+    return counts to results
 }
