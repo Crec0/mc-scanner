@@ -6,13 +6,24 @@ import it.unimi.dsi.fastutil.objects.Object2LongMap
 import joptsimple.OptionException
 import joptsimple.OptionParser
 import joptsimple.ValueConverter
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.IntArraySerializer
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.descriptors.ClassSerialDescriptorBuilder
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.SerialKind
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.encoding.encodeStructure
+import kotlinx.serialization.json.ClassDiscriminatorMode
 import kotlinx.serialization.json.Json
+import java.io.BufferedOutputStream
 import java.io.PrintStream
 import java.net.URI
 import java.nio.file.*
@@ -237,7 +248,9 @@ fun evalScript(path: Path, scan: Scan): ResultWithDiagnostics<EvaluationResult> 
 
 fun runScript(path: List<Path>, outPath: Path, outputJson: Boolean, executor: ExecutorService, needles: List<Needle>, script: Path) {
     val scan = Scan(outPath, needles, outputJson)
-    evalScript(script, scan).valueOrThrow()
+    if (!outputJson) {
+        evalScript(script, scan).valueOrThrow()
+    }
     val haystack = getHaystack(path).filterTo(mutableSetOf(), scan.haystackPredicate)
     var totalSize = 0L
     for (s in haystack) totalSize += s.size
@@ -291,8 +304,10 @@ fun runScript(path: List<Path>, outPath: Path, outputJson: Boolean, executor: Ex
     printStatus(haystack.size)
 
     if (outputJson) {
-        val outputStream = PrintStream(Files.newOutputStream(outPath), false, "UTF-8")
-        outputStream.println(json.encodeToString(searchResults))
+        val outputStream = BufferedOutputStream(Files.newOutputStream(outPath))
+        val writer = outputStream.writer()
+        writer.write(json.encodeToString(searchResults))
+        writer.close()
         outputStream.close()
     }
 
@@ -371,8 +386,80 @@ data class StatsResults(val types: Array<ItemType>, val matrix: DoubleArray) : N
     }
 }
 
-@Serializable
+@Serializable(with = SearchResultSerializer::class)
 data class SearchResult(val needle: Needle, val location: Location, val count: Long)
+
+@OptIn(ExperimentalSerializationApi::class)
+class SearchResultSerializer : KSerializer<SearchResult> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("SearchResult") {
+        element("nt", String.serializer().descriptor)
+        element("id", String.serializer().descriptor)
+        element("lt", String.serializer().descriptor)
+        element("di", String.serializer().descriptor)
+        element("lc", IntArraySerializer().descriptor)
+        element("cn", Long.serializer().descriptor)
+    }
+
+    override fun serialize(encoder: Encoder, value: SearchResult) {
+        encoder.encodeStructure(descriptor) {
+            when (value.needle) {
+                is BlockState -> {
+                    encodeStringElement(descriptor, 0, "BlockState")
+                    encodeStringElement(descriptor, 1, value.needle.id.path)
+                }
+                else -> {}
+            }
+            when (value.location) {
+                is BlockPos -> {
+                    encodeStringElement(descriptor, 2, "BlockPos")
+                    encodeStringElement(descriptor, 3, value.location.dimension)
+                    encodeSerializableElement(
+                        descriptor,
+                        4,
+                        ListSerializer(Int.serializer()),
+                        listOf(value.location.x, value.location.y, value.location.z)
+                    )
+                }
+                is ChunkPos -> {
+                    encodeStringElement(descriptor, 2, "ChunkPos")
+                    encodeStringElement(descriptor, 3, value.location.dimension)
+                    encodeSerializableElement(
+                        descriptor,
+                        4,
+                        ListSerializer(Int.serializer()),
+                        listOf(value.location.x, value.location.z)
+                    )
+                }
+                is Vec3d -> {
+                    encodeStringElement(descriptor, 2, "Vec3d")
+                    encodeStringElement(descriptor, 3, value.location.dimension)
+                }
+                is PlayerInventory -> {
+                    encodeStringElement(descriptor, 2, "PlayerInventory")
+                    encodeStringElement(descriptor, 3, value.location.player.toString())
+                }
+                is Container -> {
+                    encodeStringElement(descriptor, 2, "Container")
+                    encodeStringElement(descriptor, 3, value.location.type)
+                }
+                is Entity -> {
+                    encodeStringElement(descriptor, 2, "Entity")
+                    encodeStringElement(descriptor, 3, value.location.type)
+                }
+                is SubLocation -> {
+                    encodeStringElement(descriptor, 2, "SubLocation")
+                    encodeStringElement(descriptor, 3, value.location.index.toString())
+                }
+            }
+
+            encodeLongElement(descriptor, 5, value.count)
+        }
+    }
+
+    override fun deserialize(decoder: Decoder): SearchResult {
+        TODO("Not yet implemented")
+    }
+}
 
 fun addResults(
     results: MutableList<SearchResult>,

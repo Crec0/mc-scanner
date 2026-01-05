@@ -15,11 +15,10 @@ import kotlin.math.log2
 data class RegionFile(private val path: Path) : Scannable {
     val x: Int
     val z: Int
-    val dimension = when (val dim = path.getName(path.nameCount - 3).toString()) {
-        "." -> "overworld"
+    val dimension = when (path.getName(path.nameCount - 3).toString()) {
         "DIM-1" -> "the_nether"
         "DIM1" -> "the_end"
-        else -> dim
+        else -> "overworld"
     }
     override val size = Files.size(path)
 
