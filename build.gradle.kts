@@ -49,17 +49,20 @@ tasks.test {
     useJUnitPlatform()
 }
 
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
-    }
-}
+//tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
+//    compilerOptions {
+//        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+//    }
+//}
+//
+//tasks.withType<JavaCompile> {
+//    sourceCompatibility = JavaVersion.VERSION_1_8.toString()
+//    targetCompatibility = JavaVersion.VERSION_1_8.toString()
+//}
 
-tasks.withType<JavaCompile> {
-    sourceCompatibility = JavaVersion.VERSION_1_8.toString()
-    targetCompatibility = JavaVersion.VERSION_1_8.toString()
+kotlin {
+    jvmToolchain(21)
 }
-
 
 val generatedKotlinDir = project.buildDir.resolve("generated/kotlin")
 
