@@ -40,21 +40,27 @@ data class RegionFile(private val path: Path) : Scannable {
         }
     }
 
-    fun scanChunks(needles: Collection<Needle>, statsMode: Boolean): List<SearchResult> {
+    fun scanChunks(needles: Collection<Needle>, statsMode: Boolean, from: BlockPos? = null, to: BlockPos? = null): List<SearchResult> {
         val results = mutableListOf<SearchResult>()
         val blockIdNeedles: Set<BlockIdMask> = needles.filterIsInstanceTo(mutableSetOf())
         val blockStateNeedles: Set<BlockState> = needles.filterIsInstanceTo(mutableSetOf())
         val itemNeedles: Set<ItemType> = needles.filterIsInstanceTo(mutableSetOf())
         forEachChunk { x, z, version, data ->
+            val chunkPos = ChunkPos(dimension, (this.x shl 5) or x, (this.z shl 5) or z)
+            if (from != null && to != null && !chunkPos.inChunkRange(from, to)) {
+                return@forEachChunk
+            }
             scanChunk(
                 results,
                 blockIdNeedles,
                 blockStateNeedles,
                 itemNeedles,
                 statsMode,
-                ChunkPos(dimension, (this.x shl 5) or x, (this.z shl 5) or z),
+                chunkPos,
                 version,
-                data
+                data,
+                from,
+                to
             )
         }
         return results
@@ -95,7 +101,9 @@ fun scanChunk(
     statsMode: Boolean,
     chunkPos: ChunkPos,
     version: Int,
-    data: CompoundTag
+    data: CompoundTag,
+    from: BlockPos? = null,
+    to: BlockPos? = null
 ) {
     val dimension = chunkPos.dimension
     val flattened = version >= DataVersion.FLATTENING
@@ -103,7 +111,7 @@ fun scanChunk(
         scanUnflattenedChunk(blockIdNeedles, data, results, chunkPos)
     }
     if (flattened && blockStateNeedles.isNotEmpty()) {
-        scanFlattenedChunk(data, version, blockStateNeedles, results, chunkPos)
+        scanFlattenedChunk(data, version, blockStateNeedles, results, chunkPos, from, to)
     }
     if (itemNeedles.isNotEmpty() || statsMode) {
         scanChunkItems(version, data, itemNeedles, statsMode, dimension, results)
@@ -140,11 +148,19 @@ private fun scanFlattenedChunk(
     version: Int,
     blockStateNeedles: Set<BlockState>,
     results: MutableList<SearchResult>,
-    chunkPos: ChunkPos
+    chunkPos: ChunkPos,
+    from: BlockPos? = null,
+    to: BlockPos? = null
 ) {
     val sections = data.getList<CompoundTag>(if (version < DataVersion.REMOVE_LEVEL_TAG) "Sections" else "sections")
     val matches = Object2IntOpenHashMap<BlockState>()
     for (section in sections) {
+        val sectionY = section.getInt("Y")
+
+        if (from != null && to != null && sectionY !in from.sectionY .. to.sectionY) {
+            continue
+        }
+
         val palette = getPalette(section, version) ?: continue
         val blockStates = getBlockStates(section, version) ?: continue
         val matchingPaletteEntries = Int2ObjectOpenHashMap<BlockState>()
@@ -154,14 +170,17 @@ private fun scanFlattenedChunk(
                 if (state.matches(blockNeedle)) matchingPaletteEntries[index] = blockNeedle
             }
         }
+
         if (matchingPaletteEntries.isEmpty()) continue
         val (counts, sectionResults) = scanBlockStates(
             matchingPaletteEntries,
             blockStates,
             chunkPos,
-            section.getInt("Y"),
+            sectionY,
             palette.size,
-            version < DataVersion.NON_PACKED_BLOCK_STATES
+            version < DataVersion.NON_PACKED_BLOCK_STATES,
+            from,
+            to
         )
 
         results.addAll(sectionResults)
@@ -220,7 +239,9 @@ fun scanBlockStates(
     chunkPos: ChunkPos,
     sectionY: Int,
     paletteSize: Int,
-    packed: Boolean
+    packed: Boolean,
+    from: BlockPos? = null,
+    to: BlockPos? = null
 ): Pair<Object2IntMap<BlockState>, MutableList<SearchResult>> {
     val results = mutableListOf<SearchResult>()
     val counts = Object2IntOpenHashMap<BlockState>()
@@ -246,10 +267,11 @@ fun scanBlockStates(
         } else {
             (blockStates[longIndex] ushr subIndex).toInt() and mask
         }
-        if (id in ids) {
+        val blockPos = BlockPos.fromSection(chunkPos, sectionY, x, y, z)
+        if (id in ids && (from == null || to == null || blockPos.inBlockRange(from, to))) {
             val state = ids[id]
             counts[state] = counts.getInt(state) + 1
-            results.add(SearchResult(state, BlockPos.fromChunkSection(chunkPos, sectionY, x, y, z), 1))
+            results.add(SearchResult(state, blockPos, 1))
         }
         if (subIndex + bits == 64) longIndex++
         subIndex = (subIndex + bits) and 0x3f

@@ -12,19 +12,15 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.IntArraySerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.descriptors.ClassSerialDescriptorBuilder
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.descriptors.SerialKind
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.encoding.encodeStructure
-import kotlinx.serialization.json.ClassDiscriminatorMode
 import kotlinx.serialization.json.Json
 import java.io.BufferedOutputStream
-import java.io.PrintStream
 import java.net.URI
 import java.nio.file.*
 import java.util.*
@@ -35,6 +31,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.io.path.createParentDirectories
 import kotlin.jvm.optionals.getOrElse
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.script.experimental.api.EvaluationResult
 import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.api.constructorArgs
@@ -326,21 +324,39 @@ sealed interface Location
 data class SubLocation(val parent: Location, val index: Int) : Location
 
 @Serializable
-data class ChunkPos(val dimension: String, val x: Int, val z: Int) : Location
-
-@Serializable
 data class Container(val type: String, val location: Location) : Location
 
 @Serializable
 data class Entity(val type: String, val location: Location) : Location
 
 @Serializable
+data class ChunkPos(val dimension: String, val x: Int, val z: Int) : Location {
+    fun inChunkRange(block0: BlockPos, block1: BlockPos): Boolean {
+        return this.x in block0.sectionX..block1.sectionX && this.z in block0.sectionZ..block1.sectionZ
+    }
+}
+
+@Serializable
 data class BlockPos(val dimension: String, val x: Int, val y: Int, val z: Int) : Location {
+
+    val sectionX: Int
+        get() = x shr 4
+
+    val sectionY: Int
+        get() = y shr 4
+
+    val sectionZ: Int
+        get() = z shr 4
+
+    fun inBlockRange(block0: BlockPos, block1: BlockPos): Boolean {
+        return this.x in block0.x..block1.x && this.y in block0.y..block1.y && this.z in block0.z..block1.z
+    }
+
     companion object {
-        fun fromChunkSection(chunkPos: ChunkPos, sectionIdx: Int, offsetX: Int, offsetY: Int, offsetZ: Int): BlockPos {
-            val absoluteSectionX = chunkPos.x shl 4
-            val absoluteSectionY = sectionIdx * 16
-            val absoluteSectionZ = chunkPos.z shl 4
+        fun fromSection(chunkPos: ChunkPos, sectionY: Int, offsetX: Int, offsetY: Int, offsetZ: Int): BlockPos {
+            val absoluteSectionX = chunkPos.x * 16
+            val absoluteSectionY = sectionY * 16
+            val absoluteSectionZ = chunkPos.z * 16
             return BlockPos(chunkPos.dimension, absoluteSectionX + offsetX, absoluteSectionY + offsetY, absoluteSectionZ + offsetZ)
         }
     }
