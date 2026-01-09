@@ -34,6 +34,21 @@ application {
     mainClass.set("de.skyrising.mc.scanner.ScannerKt")
 }
 
+val shaded by configurations.creating {
+    isCanBeConsumed = true
+    isCanBeResolved = false
+}
+
+artifacts {
+    add("shaded", tasks.named("shadowJar"))
+}
+
+tasks.jar {
+    enabled = false
+}
+
+group = "lib"
+
 tasks {
     named<ShadowJar>("shadowJar") {
         archiveClassifier.set("")
